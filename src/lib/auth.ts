@@ -49,7 +49,20 @@ export async function getCurrentUser(): Promise<Usuario> {
     redirect("/login");
   }
 
-  return perfil as Usuario;
+  // Normaliza colunas snake_case do banco para o formato camelCase do tipo Usuario.
+  return {
+    id: perfil.id,
+    empresaId: perfil.empresa_id,
+    nome: perfil.nome,
+    email: perfil.email,
+    telefone: perfil.telefone ?? undefined,
+    avatarUrl: perfil.avatar_url ?? undefined,
+    role: perfil.role,
+    status: perfil.status,
+    ultimoAcesso: perfil.ultimo_acesso ?? undefined,
+    createdAt: perfil.created_at,
+    updatedAt: perfil.updated_at,
+  } as Usuario;
 }
 
 /**
