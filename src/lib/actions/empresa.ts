@@ -46,6 +46,37 @@ export async function atualizarEmpresaAction(formData: FormData) {
   return { success: true }
 }
 
+export async function uploadLogoAction(formData: FormData) {
+  const user = await getCurrentUser()
+  const supabase = await createServerClientInstance()
+
+  const file = formData.get('logo') as File
+  if (!file || file.size === 0) return { error: 'Nenhum arquivo selecionado.' }
+  if (file.size > 2 * 1024 * 1024) return { error: 'Arquivo maior que 2MB.' }
+
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+  const path = `${user.empresaId}/logo-${Date.now()}.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('logos')
+    .upload(path, file, { upsert: true, contentType: file.type })
+
+  if (uploadError) return { error: `Erro no upload: ${uploadError.message}` }
+
+  const { data: pub } = supabase.storage.from('logos').getPublicUrl(path)
+  const logoUrl = pub.publicUrl
+
+  const { error: dbError } = await supabase
+    .from('empresas')
+    .update({ logo_url: logoUrl })
+    .eq('id', user.empresaId)
+
+  if (dbError) return { error: 'Erro ao salvar a logo.' }
+
+  revalidatePath('/configuracoes')
+  return { success: true, url: logoUrl }
+}
+
 export async function buscarPerfilAction() {
   const user = await getCurrentUser()
   const supabase = await createServerClientInstance()

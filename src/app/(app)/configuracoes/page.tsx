@@ -16,6 +16,7 @@ const empresaDemo = {
   cidade: "",
   estado: "SP",
   cep: "",
+  logo_url: null as string | null,
 };
 
 export default async function ConfiguracoesPage() {

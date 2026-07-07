@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Save, Building2, Bell, Shield, CreditCard, Palette, Calendar } from "lucide-react";
+import { useState, useTransition, useRef } from "react";
+import Image from "next/image";
+import { Save, Building2, Bell, Shield, CreditCard, Palette, Calendar, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
 import { useToast } from "@/components/ui/toast";
-import { atualizarEmpresaAction } from "@/lib/actions/empresa";
+import { atualizarEmpresaAction, uploadLogoAction } from "@/lib/actions/empresa";
 
 interface EmpresaData {
   nome?: string;
@@ -20,6 +21,7 @@ interface EmpresaData {
   cidade?: string;
   estado?: string;
   cep?: string;
+  logo_url?: string | null;
 }
 
 interface Props {
@@ -39,7 +41,39 @@ const abas = [
 export function ConfiguracoesClient({ empresa, isSupabase }: Props) {
   const [abaAtiva, setAbaAtiva] = useState("empresa");
   const [isPending, startTransition] = useTransition();
+  const [isUploading, startUpload] = useTransition();
+  const [logoUrl, setLogoUrl] = useState<string | null>(empresa.logo_url ?? null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { success, error: toastError } = useToast();
+
+  function handleLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toastError("Arquivo muito grande", "A logo deve ter no máximo 2MB.");
+      return;
+    }
+
+    if (!isSupabase) {
+      // Demo: preview local sem persistir
+      setLogoUrl(URL.createObjectURL(file));
+      success("Logo carregada (demo)", "Em produção será salva no banco.");
+      return;
+    }
+
+    const fd = new FormData();
+    fd.set("logo", file);
+    startUpload(async () => {
+      const result = await uploadLogoAction(fd);
+      if (result?.error) {
+        toastError("Erro no upload", result.error);
+      } else if (result?.url) {
+        setLogoUrl(result.url);
+        success("Logo atualizada!", "O logotipo da empresa foi salvo.");
+      }
+    });
+  }
 
   function handleSaveEmpresa(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -139,11 +173,31 @@ export function ConfiguracoesClient({ empresa, isSupabase }: Props) {
               <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
                 <h2 className="font-semibold">Logotipo</h2>
                 <div className="mt-4 flex items-center gap-4">
-                  <div className="flex size-20 items-center justify-center rounded-[var(--radius-lg)] border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-subtle)] text-xs text-center">
-                    <span>Sem logo</span>
+                  <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-lg)] border-2 border-dashed border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-fg-subtle)] text-xs text-center">
+                    {logoUrl ? (
+                      <Image src={logoUrl} alt="Logo" fill className="object-contain p-1" unoptimized />
+                    ) : (
+                      <span>Sem logo</span>
+                    )}
                   </div>
                   <div>
-                    <Button variant="outline" size="sm" type="button">Fazer upload</Button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                      className="hidden"
+                      onChange={handleLogoFile}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      loading={isUploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {isUploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                      {logoUrl ? "Trocar logo" : "Fazer upload"}
+                    </Button>
                     <p className="mt-1 text-xs text-[var(--color-fg-subtle)]">PNG, JPG ou SVG. Máx. 2MB.</p>
                   </div>
                 </div>
