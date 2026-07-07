@@ -61,7 +61,7 @@ export function EventoForm({
   const { success, error: toastError } = useToast();
   const [cor, setCor] = useState("#3b82f6");
   const [prioridade, setPrioridade] = useState("normal");
-  const [visibilidade, setVisibilidade] = useState("todos");
+  const [visibilidade, setVisibilidade] = useState("equipe");
   const [checklist, setChecklist] = useState<{ id: string; texto: string }[]>([]);
   const [novoItem, setNovoItem] = useState("");
   const [notificacoes, setNotificacoes] = useState<number[]>([1440, 30]);
@@ -89,6 +89,7 @@ export function EventoForm({
     fd.set("local", (form.get("endereco") as string) ?? "");
     fd.set("descricao", (form.get("descricao") as string) ?? "");
     fd.set("prioridade", prioridade);
+    fd.set("visibilidade", visibilidade);
     startTransition(async () => {
       const result = await criarEventoAgendaAction(fd);
       if (result?.error) {
@@ -338,12 +339,10 @@ export function EventoForm({
           <Lock className="size-4 text-[var(--color-fg-subtle)]" />
           <h2 className="font-semibold">Visibilidade</h2>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2">
           {[
-            { value: "todos",   label: "Todos", desc: "Toda a equipe" },
-            { value: "gerente", label: "Gerentes", desc: "Gerentes e acima" },
-            { value: "tecnico", label: "Técnico", desc: "Só o responsável" },
-            { value: "admin",   label: "Admin",  desc: "Apenas admins" },
+            { value: "equipe",  label: "👥 Toda a equipe", desc: "Todos da empresa veem este evento" },
+            { value: "privado", label: "🔒 Só eu", desc: "Ninguém mais vê — nem outros admins" },
           ].map((v) => (
             <button
               key={v.value}

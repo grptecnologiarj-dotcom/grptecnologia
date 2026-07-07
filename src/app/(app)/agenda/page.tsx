@@ -92,6 +92,8 @@ function normalizarEvento(ev: any) {
     horaFim: ev.data_fim ? new Date(ev.data_fim).toTimeString().slice(0, 5) : ev.horaFim,
     tecnicoId: ev.tecnico_id ?? ev.tecnicoId,
     tecnicoNome: ev.usuarios?.nome ?? ev.tecnicoNome,
+    visibilidade: ev.visibilidade ?? "equipe",
+    createdBy: ev.created_by ?? null,
     clienteNome: ev.clientes?.nome ?? ev.clienteNome,
     endereco: ev.local ?? ev.endereco,
     osNumero: ev.ordens_servico?.numero ?? ev.osNumero,
@@ -176,7 +178,7 @@ export default function AgendaPage() {
   const [filtrosAbertos, setFiltrosAbertos] = useState(false);
   const [apenasMinhos, setApenasMinhos] = useState(false);
   const [eventos, setEventos] = useState<any[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [perfilId, setPerfilId] = useState<string | null>(null);
   const [loading, setLoading] = useState(isSupabase);
 
   useEffect(() => {
@@ -185,8 +187,12 @@ export default function AgendaPage() {
       return;
     }
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) setUserId(data.user.id);
+    supabase.auth.getUser().then(async ({ data }) => {
+      if (data.user) {
+        const { data: perfil } = await supabase
+          .from("usuarios").select("id").eq("auth_user_id", data.user.id).single();
+        if (perfil) setPerfilId(perfil.id);
+      }
     });
 
     async function carregarEventos() {
@@ -215,9 +221,12 @@ export default function AgendaPage() {
 
   const eventosFiltrados = useMemo(() => {
     return eventos.filter((ev) => {
-      if (apenasMinhos && userId) {
-        const authMatch = ev.tecnicoId === userId;
-        if (!authMatch) return false;
+      // Eventos privados: só o criador ou o técnico responsável enxergam
+      if (ev.visibilidade === "privado" && perfilId &&
+          ev.createdBy !== perfilId && ev.tecnicoId !== perfilId) return false;
+      if (apenasMinhos && perfilId) {
+        const meu = ev.tecnicoId === perfilId || ev.createdBy === perfilId;
+        if (!meu) return false;
       }
       if (busca && !ev.titulo.toLowerCase().includes(busca.toLowerCase()) && !ev.clienteNome?.toLowerCase().includes(busca.toLowerCase())) return false;
       if (filtroTecnico && ev.tecnicoId !== filtroTecnico) return false;
@@ -226,7 +235,7 @@ export default function AgendaPage() {
       if (filtroStatus && ev.status !== filtroStatus) return false;
       return true;
     });
-  }, [eventos, busca, filtroTecnico, filtroTipo, filtroPrioridade, filtroStatus, apenasMinhos, userId]);
+  }, [eventos, busca, filtroTecnico, filtroTipo, filtroPrioridade, filtroStatus, apenasMinhos, perfilId]);
 
   const eventosCriticos = eventosFiltrados.filter(e => e.prioridade === "critica" || e.status === "urgente");
 

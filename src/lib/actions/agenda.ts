@@ -88,6 +88,7 @@ export async function criarEventoAgendaAction(formData: FormData) {
       local: formData.get("local") || null,
       descricao: formData.get("descricao") || null,
       prioridade: formData.get("prioridade") || "normal",
+      visibilidade: formData.get("visibilidade") === "privado" ? "privado" : "equipe",
       created_by: user.id,
     })
     .select("id")
@@ -133,6 +134,7 @@ export async function atualizarEventoAgendaAction(id: string, formData: FormData
       local: formData.get("local") || null,
       descricao: formData.get("descricao") || null,
       prioridade: formData.get("prioridade") || "normal",
+      visibilidade: formData.get("visibilidade") === "privado" ? "privado" : "equipe",
     })
     .eq("id", id)
     .eq("empresa_id", user.empresaId);
