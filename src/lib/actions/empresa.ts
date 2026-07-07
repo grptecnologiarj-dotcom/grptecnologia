@@ -19,31 +19,49 @@ export async function buscarEmpresaAction() {
 }
 
 export async function atualizarEmpresaAction(formData: FormData) {
-  const user = await getCurrentUser()
-  const supabase = await createServerClientInstance()
+  try {
+    const user = await getCurrentUser()
+    if (!user?.empresaId) {
+      return { error: 'Empresa não identificada para o usuário.' }
+    }
+    const supabase = await createServerClientInstance()
 
-  const updates: Record<string, string | null> = {
-    nome: formData.get('nome') as string,
-    razao_social: formData.get('razao_social') as string || null,
-    cnpj: formData.get('cnpj') as string || null,
-    telefone: formData.get('telefone') as string || null,
-    whatsapp: formData.get('whatsapp') as string || null,
-    email: formData.get('email') as string || null,
-    site: formData.get('site') as string || null,
-    endereco: formData.get('endereco') as string || null,
-    cidade: formData.get('cidade') as string || null,
-    estado: formData.get('estado') as string || null,
-    cep: formData.get('cep') as string || null,
+    const updates: Record<string, string | null> = {
+      nome: formData.get('nome') as string,
+      razao_social: (formData.get('razao_social') as string) || null,
+      cnpj: (formData.get('cnpj') as string) || null,
+      telefone: (formData.get('telefone') as string) || null,
+      whatsapp: (formData.get('whatsapp') as string) || null,
+      email: (formData.get('email') as string) || null,
+      site: (formData.get('site') as string) || null,
+      endereco: (formData.get('endereco') as string) || null,
+      cidade: (formData.get('cidade') as string) || null,
+      estado: (formData.get('estado') as string) || null,
+      cep: (formData.get('cep') as string) || null,
+    }
+
+    // update + retorna linhas afetadas para detectar empresa inexistente
+    const { data, error } = await supabase
+      .from('empresas')
+      .update(updates)
+      .eq('id', user.empresaId)
+      .select('id')
+
+    if (error) return { error: `Erro ao salvar: ${error.message}` }
+
+    // Se nenhuma linha foi atualizada, a empresa não existe — cria.
+    if (!data || data.length === 0) {
+      const { error: insertError } = await supabase
+        .from('empresas')
+        .insert({ id: user.empresaId, ...updates })
+      if (insertError) return { error: `Erro ao criar empresa: ${insertError.message}` }
+    }
+
+    revalidatePath('/configuracoes')
+    return { success: true }
+  } catch (err) {
+    return { error: `Falha inesperada: ${err instanceof Error ? err.message : String(err)}` }
   }
-
-  const { error } = await supabase
-    .from('empresas')
-    .update(updates)
-    .eq('id', user.empresaId)
-
-  if (error) return { error: 'Erro ao salvar configurações.' }
-  revalidatePath('/configuracoes')
-  return { success: true }
 }
 
 export async function uploadLogoAction(formData: FormData) {
