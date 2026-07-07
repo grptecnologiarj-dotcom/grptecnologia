@@ -262,7 +262,7 @@ export default function Home() {
           {/* CTAs */}
           <div className="flex items-center gap-2">
             <Link href="/login"
-              className="hidden sm:block text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors px-3 py-2">
+              className="rounded-full border border-slate-200 bg-white/70 text-sm font-medium text-slate-700 hover:text-slate-900 hover:border-slate-300 transition-colors px-4 py-2">
               Entrar
             </Link>
             <Link href="/registro"
