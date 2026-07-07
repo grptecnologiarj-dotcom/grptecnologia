@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isSupabaseConfigured } from "@/lib/auth";
+import { buscarEquipamentoAction } from "@/lib/actions/equipamentos";
 import { demoEquipamentos, demoOS, statusOSConfig } from "@/lib/demo-data";
 import { formatDate, formatCurrency } from "@/lib/utils";
 
@@ -21,21 +22,54 @@ export async function generateMetadata({ params }: Props) {
 export default async function EquipamentoDetalhePage({ params }: Props) {
   const { id } = await params;
 
-  let equip: (typeof demoEquipamentos)[0] | undefined;
+  let equip: any;
+  let osDoEquipamento: { id: string; numero: string; status: string; clienteNome: string; valorTotal: number; dataAbertura: string }[];
 
   if (isSupabaseConfigured()) {
-    // TODO: buscar do Supabase
-    equip = demoEquipamentos.find((e) => e.id === id) ?? demoEquipamentos[0];
+    const result = await buscarEquipamentoAction(id);
+    if (!result.data) return notFound();
+    const d = result.data as any;
+    equip = {
+      id: d.id,
+      nome: d.nome,
+      tipo: d.categoria ?? null,
+      marca: d.marca ?? null,
+      modelo: d.modelo ?? null,
+      numero_serie: d.numero_serie ?? null,
+      imei: d.imei ?? null,
+      cor: d.cor ?? null,
+      observacoes: d.observacoes ?? null,
+      clienteId: d.clientes?.id ?? null,
+      clienteNome: d.clientes?.nome ?? "Sem cliente",
+      createdAt: d.created_at ?? null,
+    };
+    osDoEquipamento = ((d.ordens_servico ?? []) as any[])
+      .sort((a, b) => (b.data_abertura ?? "").localeCompare(a.data_abertura ?? ""))
+      .slice(0, 5)
+      .map((o) => ({
+        id: o.id,
+        numero: o.numero,
+        status: o.status,
+        clienteNome: d.clientes?.nome ?? "—",
+        valorTotal: Number(o.valor_total ?? 0),
+        dataAbertura: o.data_abertura,
+      }));
   } else {
     equip = demoEquipamentos.find((e) => e.id === id) ?? demoEquipamentos[0];
+    osDoEquipamento = demoOS
+      .filter((o) => o.equipamentoNome?.toLowerCase().includes(equip!.nome.split(" ")[0].toLowerCase()))
+      .slice(0, 5)
+      .map((o) => ({
+        id: o.id,
+        numero: o.numero,
+        status: o.status,
+        clienteNome: o.clienteNome,
+        valorTotal: o.valorTotal,
+        dataAbertura: o.dataAbertura,
+      }));
   }
 
   if (!equip) notFound();
-
-  // OS deste equipamento (filtrado pelo nome do equipamento em demo)
-  const osDoEquipamento = demoOS.filter((o) =>
-    o.equipamentoNome?.toLowerCase().includes(equip!.nome.split(" ")[0].toLowerCase())
-  ).slice(0, 5);
 
   const infoItems = [
     { label: "Tipo", value: (equip as any).tipo, icon: Laptop },
@@ -147,7 +181,7 @@ export default async function EquipamentoDetalhePage({ params }: Props) {
             ) : (
               <div className="divide-y divide-[var(--color-border)]">
                 {osDoEquipamento.map((os) => {
-                  const cfg = statusOSConfig[os.status];
+                  const cfg = statusOSConfig[os.status as keyof typeof statusOSConfig] ?? { label: os.status, color: "#6b7280", bg: "#f3f4f6" };
                   return (
                     <Link
                       key={os.id}
@@ -231,7 +265,7 @@ export default async function EquipamentoDetalhePage({ params }: Props) {
                 ...osDoEquipamento.map((o) => ({
                   label: `OS ${o.numero}`,
                   date: o.dataAbertura,
-                  color: statusOSConfig[o.status].color,
+                  color: (statusOSConfig[o.status as keyof typeof statusOSConfig] ?? { color: "#6b7280" }).color,
                 })),
               ].map((e, i) => (
                 <div key={i} className="flex items-center gap-3">

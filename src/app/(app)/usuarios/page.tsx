@@ -3,11 +3,48 @@ import { Plus, Search, UserCheck, UserX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
 import { demoUsuarios, roleConfig } from "@/lib/demo-data";
+import { isSupabaseConfigured } from "@/lib/auth";
+import { listarUsuariosAction } from "@/lib/actions/usuarios";
 
 export const metadata = { title: "Usuários — DeskControl" };
 
-export default function UsuariosPage() {
-  const ativos = demoUsuarios.filter((u) => u.status === "ativo").length;
+interface UsuarioLinha {
+  id: string;
+  nome: string;
+  email: string;
+  role: string;
+  status: string;
+  totalOs: number;
+  ultimoAcesso: string | null;
+}
+
+export default async function UsuariosPage() {
+  let usuarios: UsuarioLinha[];
+
+  if (isSupabaseConfigured()) {
+    const { data } = await listarUsuariosAction();
+    usuarios = (data ?? []).map((u: Record<string, unknown>) => ({
+      id: String(u.id),
+      nome: (u.nome as string) ?? "",
+      email: (u.email as string) ?? "",
+      role: (u.role as string) ?? "atendente",
+      status: (u.status as string) ?? "ativo",
+      totalOs: 0,
+      ultimoAcesso: (u.ultimo_acesso as string) ?? null,
+    }));
+  } else {
+    usuarios = demoUsuarios.map((u) => ({
+      id: u.id,
+      nome: u.nome,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      totalOs: u.totalOs ?? 0,
+      ultimoAcesso: u.ultimoAcesso ?? null,
+    }));
+  }
+
+  const ativos = usuarios.filter((u) => u.status === "ativo").length;
 
   return (
     <div className="space-y-6">
@@ -15,13 +52,13 @@ export default function UsuariosPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Usuários</h1>
           <p className="text-sm text-[var(--color-fg-muted)]">
-            {ativos} usuários ativos de {demoUsuarios.length} cadastrados
+            {ativos} usuários ativos de {usuarios.length} cadastrados
           </p>
         </div>
         <Button asChild>
           <Link href="/usuarios/novo">
             <Plus className="size-4" />
-            Convidar usuário
+            Adicionar usuário
           </Link>
         </Button>
       </div>
@@ -29,10 +66,10 @@ export default function UsuariosPage() {
       {/* Cards de papéis */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { role: "admin", count: demoUsuarios.filter((u) => u.role === "admin").length },
-          { role: "tecnico", count: demoUsuarios.filter((u) => u.role === "tecnico").length },
-          { role: "atendente", count: demoUsuarios.filter((u) => u.role === "atendente").length },
-          { role: "financeiro", count: demoUsuarios.filter((u) => u.role === "financeiro").length },
+          { role: "admin", count: usuarios.filter((u) => u.role === "admin").length },
+          { role: "tecnico", count: usuarios.filter((u) => u.role === "tecnico").length },
+          { role: "atendente", count: usuarios.filter((u) => u.role === "atendente").length },
+          { role: "financeiro", count: usuarios.filter((u) => u.role === "financeiro").length },
         ].map(({ role, count }) => {
           const cfg = roleConfig[role];
           return (
@@ -76,7 +113,14 @@ export default function UsuariosPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--color-border)]">
-              {demoUsuarios.map((usr) => {
+              {usuarios.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-[var(--color-fg-muted)]">
+                    Nenhum usuário cadastrado.
+                  </td>
+                </tr>
+              )}
+              {usuarios.map((usr) => {
                 const roleCfg = roleConfig[usr.role] ?? roleConfig.atendente;
                 return (
                   <tr key={usr.id} className="transition-colors hover:bg-[var(--color-surface-muted)]">
@@ -115,7 +159,7 @@ export default function UsuariosPage() {
                       {usr.totalOs > 0 ? <span className="font-semibold">{usr.totalOs}</span> : <span className="text-[var(--color-fg-subtle)]">—</span>}
                     </td>
                     <td className="hidden px-4 py-3 text-[var(--color-fg-subtle)] lg:table-cell">
-                      {formatDate(usr.ultimoAcesso)}
+                      {usr.ultimoAcesso ? formatDate(usr.ultimoAcesso) : "—"}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link href={`/usuarios/${usr.id}`}

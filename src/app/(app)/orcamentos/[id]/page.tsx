@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  ArrowLeft, Send, Printer, CheckCircle2, XCircle,
-  Clock, FileText, User, Calendar, Edit,
+  ArrowLeft, Send, CheckCircle2, XCircle,
+  Clock, FileText, User, Calendar,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { isSupabaseConfigured } from "@/lib/auth";
+import { buscarOrcamentoAction } from "@/lib/actions/orcamentos";
 import { demoOrcamentos } from "@/lib/demo-data";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { OrcamentoAcoes, CopiarLinkButton } from "./orcamento-acoes";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -17,6 +18,7 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; i
   rascunho: { label: "Rascunho", color: "#6b7280", bg: "#f3f4f6", icon: FileText },
   enviado: { label: "Enviado", color: "#2563eb", bg: "#eff6ff", icon: Send },
   aprovado: { label: "Aprovado", color: "#16a34a", bg: "#f0fdf4", icon: CheckCircle2 },
+  recusado: { label: "Recusado", color: "#dc2626", bg: "#fef2f2", icon: XCircle },
   reprovado: { label: "Reprovado", color: "#dc2626", bg: "#fef2f2", icon: XCircle },
   expirado: { label: "Expirado", color: "#d97706", bg: "#fffbeb", icon: Clock },
 };
@@ -26,18 +28,74 @@ export async function generateMetadata({ params }: Props) {
   return { title: `Orçamento #${id.slice(0, 6)}` };
 }
 
+interface ItemView {
+  descricao: string;
+  tipo?: string | null;
+  quantidade: number;
+  valorUnitario: number;
+}
+
 export default async function OrcamentoDetalhePage({ params }: Props) {
   const { id } = await params;
 
-  let orc: (typeof demoOrcamentos)[0] | undefined;
+  const demo = demoOrcamentos.find((o) => o.id === id) ?? demoOrcamentos[0];
+  let orc = {
+    id: demo.id,
+    numero: demo.numero,
+    status: demo.status,
+    titulo: demo.titulo as string | null,
+    clienteId: demo.clienteId as string | null,
+    clienteNome: demo.clienteNome,
+    dataCriacao: demo.dataCriacao,
+    dataValidade: demo.dataValidade as string | null,
+    dataEnvio: demo.dataEnvio as string | null,
+    dataAprovacao: demo.dataAprovacao as string | null,
+    itens: (demo.itens ?? []).map((i: any): ItemView => ({
+      descricao: i.descricao,
+      tipo: i.tipo ?? null,
+      quantidade: Number(i.quantidade ?? 1),
+      valorUnitario: Number(i.valorUnitario ?? 0),
+    })),
+    subtotal: Number(demo.valorTotal ?? 0),
+    desconto: Number(demo.valorDesconto ?? 0),
+    total: Number(demo.valorTotal ?? 0) - Number(demo.valorDesconto ?? 0),
+    observacoes: demo.observacoes as string | null,
+    token_aprovacao: demo.linkAprovacao ? `demo-${demo.id}` : null,
+    isSupabase: false,
+  };
 
   if (isSupabaseConfigured()) {
-    orc = demoOrcamentos.find((o) => o.id === id) ?? demoOrcamentos[0];
-  } else {
-    orc = demoOrcamentos.find((o) => o.id === id) ?? demoOrcamentos[0];
+    const result = await buscarOrcamentoAction(id);
+    if (!result.data) return notFound();
+    const d = result.data as any;
+    const itens: ItemView[] = (Array.isArray(d.itens) ? d.itens : []).map((i: any): ItemView => ({
+      descricao: i.descricao ?? "",
+      tipo: i.tipo ?? null,
+      quantidade: Number(i.quantidade ?? 1),
+      valorUnitario: Number(i.valorUnitario ?? i.valor_unit ?? i.valor_unitario ?? 0),
+    }));
+    const subtotal = Number(d.subtotal ?? d.valor_total ?? 0);
+    const desconto = Number(d.desconto ?? 0);
+    orc = {
+      id: d.id,
+      numero: d.numero,
+      status: d.status,
+      titulo: d.descricao ?? null,
+      clienteId: d.clientes?.id ?? d.cliente_id ?? null,
+      clienteNome: d.clientes?.nome ?? "—",
+      dataCriacao: d.created_at,
+      dataValidade: d.validade ?? null,
+      dataEnvio: null,
+      dataAprovacao: null,
+      itens,
+      subtotal,
+      desconto,
+      total: Number(d.total ?? subtotal - desconto),
+      observacoes: d.observacoes ?? null,
+      token_aprovacao: d.token_aprovacao ?? null,
+      isSupabase: true,
+    };
   }
-
-  if (!orc) notFound();
 
   const cfg = statusConfig[orc.status] ?? statusConfig.rascunho;
   const StatusIcon = cfg.icon;
@@ -65,42 +123,11 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
               </span>
             </div>
             <p className="mt-0.5 text-sm text-[var(--color-fg-muted)]">
-              {orc.titulo} · Criado em {formatDate(orc.dataCriacao)}
+              {orc.titulo ? `${orc.titulo} · ` : ""}Criado em {formatDate(orc.dataCriacao)}
             </p>
           </div>
         </div>
-        <div className="flex gap-2 shrink-0 flex-wrap">
-          <Button variant="outline" size="sm">
-            <Printer className="size-4" />
-            Imprimir
-          </Button>
-          {(orc.status === "rascunho" || orc.status === "enviado") && (
-            <Button variant="outline" size="sm" asChild>
-              <Link href={`/orcamentos/${orc.id}/editar`}>
-                <Edit className="size-4" />
-                Editar
-              </Link>
-            </Button>
-          )}
-          {orc.status === "rascunho" && (
-            <Button size="sm">
-              <Send className="size-4" />
-              Enviar ao cliente
-            </Button>
-          )}
-          {orc.status === "enviado" && (
-            <>
-              <Button variant="outline" size="sm" className="text-[var(--color-danger)] hover:border-[var(--color-danger)]">
-                <XCircle className="size-4" />
-                Reprovar
-              </Button>
-              <Button size="sm">
-                <CheckCircle2 className="size-4" />
-                Aprovar
-              </Button>
-            </>
-          )}
-        </div>
+        <OrcamentoAcoes id={orc.id} status={orc.status} isSupabase={orc.isSupabase} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -153,7 +180,7 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--color-border)]">
-                    {(orc.itens ?? []).map((item: any, i: number) => (
+                    {orc.itens.map((item, i) => (
                       <tr key={i}>
                         <td className="py-2.5">
                           <p className="font-medium">{item.descricao}</p>
@@ -166,6 +193,11 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
                         <td className="py-2.5 text-right font-semibold">{formatCurrency(item.quantidade * item.valorUnitario)}</td>
                       </tr>
                     ))}
+                    {orc.itens.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-6 text-center text-[var(--color-fg-muted)]">Nenhum item neste orçamento.</td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -175,18 +207,18 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
                 <div className="space-y-1.5 w-56">
                   <div className="flex justify-between text-sm">
                     <span className="text-[var(--color-fg-muted)]">Subtotal</span>
-                    <span>{formatCurrency(orc.valorTotal)}</span>
+                    <span>{formatCurrency(orc.subtotal)}</span>
                   </div>
-                  {(orc.valorDesconto ?? 0) > 0 && (
+                  {orc.desconto > 0 && (
                     <div className="flex justify-between text-sm">
                       <span className="text-[var(--color-fg-muted)]">Desconto</span>
-                      <span className="text-[var(--color-danger)]">−{formatCurrency(orc.valorDesconto!)}</span>
+                      <span className="text-[var(--color-danger)]">−{formatCurrency(orc.desconto)}</span>
                     </div>
                   )}
                   <div className="flex justify-between border-t border-[var(--color-border)] pt-2 text-base font-bold">
                     <span>Total</span>
                     <span className="text-[var(--color-success)]">
-                      {formatCurrency(orc.valorTotal - (orc.valorDesconto ?? 0))}
+                      {formatCurrency(orc.total)}
                     </span>
                   </div>
                 </div>
@@ -212,9 +244,13 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
               <div className="flex items-center gap-2.5 text-sm">
                 <User className="size-4 text-[var(--color-fg-subtle)] shrink-0" />
                 <span className="text-[var(--color-fg-muted)]">Cliente:</span>
-                <Link href={`/clientes/${orc.clienteId}`} className="font-medium text-[var(--color-brand-600)] hover:underline">
-                  {orc.clienteNome}
-                </Link>
+                {orc.clienteId ? (
+                  <Link href={`/clientes/${orc.clienteId}`} className="font-medium text-[var(--color-brand-600)] hover:underline">
+                    {orc.clienteNome}
+                  </Link>
+                ) : (
+                  <span className="font-medium">{orc.clienteNome}</span>
+                )}
               </div>
               <div className="flex items-center gap-2.5 text-sm">
                 <Calendar className="size-4 text-[var(--color-fg-subtle)] shrink-0" />
@@ -231,7 +267,7 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
               <div className="flex items-center gap-2.5 text-sm">
                 <FileText className="size-4 text-[var(--color-fg-subtle)] shrink-0" />
                 <span className="text-[var(--color-fg-muted)]">Valor:</span>
-                <span className="font-bold text-[var(--color-success)]">{formatCurrency(orc.valorTotal)}</span>
+                <span className="font-bold text-[var(--color-success)]">{formatCurrency(orc.total)}</span>
               </div>
             </div>
           </div>
@@ -242,8 +278,8 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
             <div className="space-y-3">
               {[
                 { label: "Orçamento criado", date: orc.dataCriacao, done: true },
-                { label: "Enviado ao cliente", date: orc.dataEnvio, done: !!orc.dataEnvio },
-                { label: "Aprovado", date: orc.dataAprovacao, done: !!orc.dataAprovacao },
+                { label: "Enviado ao cliente", date: orc.dataEnvio, done: !!orc.dataEnvio || ["enviado", "aprovado", "recusado", "reprovado"].includes(orc.status) },
+                { label: "Aprovado", date: orc.dataAprovacao, done: !!orc.dataAprovacao || orc.status === "aprovado" },
               ].map((e, i) => (
                 <div key={i} className="flex items-center gap-3">
                   <div className={`size-2 rounded-full shrink-0 ${e.done ? "bg-[var(--color-success)]" : "bg-[var(--color-border)]"}`} />
@@ -257,15 +293,15 @@ export default async function OrcamentoDetalhePage({ params }: Props) {
           </div>
 
           {/* Link de aprovação */}
-          {orc.linkAprovacao && (
+          {orc.token_aprovacao && (
             <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)] mb-2">Link do cliente</h3>
               <p className="text-xs text-[var(--color-fg-muted)] mb-2">Compartilhe com o cliente para aprovação online:</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 truncate rounded bg-[var(--color-surface-muted)] px-2 py-1 text-xs font-mono">
-                  {orc.linkAprovacao}
+                  /aprovar/{orc.token_aprovacao}
                 </code>
-                <Button size="sm" variant="outline" type="button">Copiar</Button>
+                <CopiarLinkButton token={orc.token_aprovacao} />
               </div>
             </div>
           )}

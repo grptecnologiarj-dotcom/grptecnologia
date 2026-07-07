@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
+import { criarTransacaoAction } from "@/lib/actions/financeiro";
+const isSupabaseConfigured = () =>
+  !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 import { ArrowLeft, TrendingUp, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,18 +20,41 @@ const categorias = {
 export default function NovaTransacaoPage() {
   const router = useRouter();
   const [tipo, setTipo] = useState<"receita" | "despesa">("receita");
-  const [saving, setSaving] = useState(false);
-  const { success } = useToast();
+  const [saving, startTransition] = useTransition();
+  const { success, error: toastError } = useToast();
 
-  async function handleSave(e: React.FormEvent) {
+  function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    success(
-      tipo === "receita" ? "Receita registrada!" : "Despesa registrada!",
-      "A transação foi lançada no caixa."
-    );
-    router.push("/financeiro");
+    if (!isSupabaseConfigured()) {
+      success(
+        tipo === "receita" ? "Receita registrada! (demo)" : "Despesa registrada! (demo)",
+        "Em produção os dados serão persistidos no banco."
+      );
+      router.push("/financeiro");
+      return;
+    }
+    const form = new FormData(e.currentTarget);
+    const fd = new FormData();
+    fd.set("tipo", tipo);
+    fd.set("categoria", (form.get("categoria") as string) ?? "");
+    fd.set("descricao", (form.get("descricao") as string) ?? "");
+    fd.set("valor", (form.get("valor") as string) ?? "");
+    fd.set("data", (form.get("data") as string) ?? "");
+    fd.set("status", "confirmado");
+    fd.set("metodo_pagamento", (form.get("forma_pagamento") as string) ?? "");
+    fd.set("os_id", "");
+    fd.set("observacoes", (form.get("observacoes") as string) ?? "");
+    startTransition(async () => {
+      const result = await criarTransacaoAction(fd);
+      if (result?.error) {
+        toastError("Erro ao registrar", result.error);
+      } else {
+        success(
+          tipo === "receita" ? "Receita registrada!" : "Despesa registrada!",
+          "A transação foi lançada no caixa."
+        );
+      }
+    });
   }
 
   return (

@@ -55,6 +55,21 @@ export async function buscarEventoAgendaAction(id: string) {
   return { data };
 }
 
+export async function listarTecnicosAction() {
+  const user = await getCurrentUser();
+  const supabase = await createServerClientInstance();
+
+  const { data, error } = await supabase
+    .from("usuarios")
+    .select("id, nome, role")
+    .eq("empresa_id", user.empresaId)
+    .in("role", ["tecnico", "admin"])
+    .order("nome");
+
+  if (error) return { error: error.message, data: [] as any[] };
+  return { data: data ?? [] };
+}
+
 export async function criarEventoAgendaAction(formData: FormData) {
   const user = await getCurrentUser();
   const supabase = await createServerClientInstance();

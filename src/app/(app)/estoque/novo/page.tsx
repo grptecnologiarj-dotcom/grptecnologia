@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { criarItemEstoqueAction } from "@/lib/actions/estoque";
+const isSupabaseConfigured = () =>
+  !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
@@ -14,15 +17,38 @@ const unidades = ["un", "cx", "par", "m", "kg", "l", "rolo"];
 
 export default function NovoProdutoPage() {
   const router = useRouter();
-  const [saving, setSaving] = useState(false);
-  const { success } = useToast();
+  const [saving, startTransition] = useTransition();
+  const { success, error: toastError } = useToast();
 
-  async function handleSave(e: React.FormEvent) {
+  function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSaving(true);
-    await new Promise((r) => setTimeout(r, 700));
-    success("Produto cadastrado!", "O item foi adicionado ao estoque.");
-    router.push("/estoque");
+    if (!isSupabaseConfigured()) {
+      success("Produto cadastrado! (demo)", "Em produção os dados serão persistidos no banco.");
+      router.push("/estoque");
+      return;
+    }
+    const form = new FormData(e.currentTarget);
+    const fd = new FormData();
+    fd.set("nome", (form.get("nome") as string) ?? "");
+    fd.set("categoria", (form.get("categoria") as string) ?? "");
+    fd.set("marca", (form.get("marca") as string) ?? "");
+    fd.set("modelo", "");
+    fd.set("codigo_barras", (form.get("codigo_barras") as string) ?? "");
+    fd.set("sku", (form.get("codigo") as string) ?? "");
+    fd.set("quantidade", (form.get("estoque") as string) || "0");
+    fd.set("quantidade_minima", (form.get("estoque_min") as string) || "0");
+    fd.set("preco_custo", (form.get("valor_custo") as string) || "0");
+    fd.set("preco_venda", (form.get("valor_venda") as string) || "0");
+    fd.set("localizacao", (form.get("localizacao") as string) ?? "");
+    fd.set("observacoes", (form.get("descricao") as string) ?? "");
+    startTransition(async () => {
+      const result = await criarItemEstoqueAction(fd);
+      if (result?.error) {
+        toastError("Erro ao cadastrar", result.error);
+      } else {
+        success("Produto cadastrado!", "O item foi adicionado ao estoque.");
+      }
+    });
   }
 
   return (

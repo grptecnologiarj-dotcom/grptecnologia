@@ -1,12 +1,14 @@
-import { Search, ClipboardList, Users, Package, Wallet, ChevronRight, SearchX } from "lucide-react";
+import { Search, ClipboardList, Users, Package, Wallet, Monitor, ChevronRight, SearchX } from "lucide-react";
 import Link from "next/link";
 import { demoOS, demoClientes, demoProdutos, demoTransacoes } from "@/lib/demo-data";
 import { formatCurrency } from "@/lib/utils";
+import { isSupabaseConfigured } from "@/lib/auth";
+import { buscarGlobalAction } from "@/lib/actions/busca";
 
 export const metadata = { title: "Busca Global — DeskControl" };
 
 interface SearchResult {
-  tipo: "os" | "cliente" | "estoque" | "financeiro";
+  tipo: "os" | "cliente" | "estoque" | "financeiro" | "equipamento";
   id: string;
   titulo: string;
   subtitulo: string;
@@ -98,6 +100,7 @@ const tipoConfig = {
   cliente: { label: "Clientes", icon: Users, color: "var(--color-success)", bg: "var(--color-success-bg)" },
   estoque: { label: "Estoque", icon: Package, color: "var(--color-warning)", bg: "var(--color-warning-bg)" },
   financeiro: { label: "Financeiro", icon: Wallet, color: "var(--color-danger)", bg: "var(--color-danger-bg)" },
+  equipamento: { label: "Equipamentos", icon: Monitor, color: "var(--color-info)", bg: "var(--color-info-bg)" },
 };
 
 export default async function BuscaPage({
@@ -107,7 +110,14 @@ export default async function BuscaPage({
 }) {
   const { q } = await searchParams;
   const query = q ?? "";
-  const resultados = buscarTudo(query);
+
+  let resultados: SearchResult[];
+  if (isSupabaseConfigured() && query.trim()) {
+    const { data } = await buscarGlobalAction(query);
+    resultados = data;
+  } else {
+    resultados = buscarTudo(query);
+  }
 
   const grupos = (Object.keys(tipoConfig) as Array<keyof typeof tipoConfig>)
     .map((tipo) => ({

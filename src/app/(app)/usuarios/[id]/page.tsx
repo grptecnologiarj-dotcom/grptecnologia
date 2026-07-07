@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, User, Mail, Phone, Shield, Calendar, Wrench, Edit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isSupabaseConfigured } from "@/lib/auth";
+import { buscarUsuarioAction } from "@/lib/actions/usuarios";
 import { demoUsuarios, demoOS, roleConfig, statusOSConfig } from "@/lib/demo-data";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { UsuarioAcoes } from "./usuario-acoes";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -15,24 +17,62 @@ export async function generateMetadata({ params }: Props) {
   return { title: `Usuário #${id.slice(0, 6)}` };
 }
 
+interface UsuarioView {
+  id: string;
+  nome: string;
+  email: string;
+  telefone: string | null;
+  role: string;
+  status: string;
+  createdAt: string | null;
+  ultimoAcesso: string | null;
+}
+
 export default async function UsuarioDetalhePage({ params }: Props) {
   const { id } = await params;
+  const supabaseAtivo = isSupabaseConfigured();
 
-  let usuario: (typeof demoUsuarios)[0] | undefined;
+  let usuario: UsuarioView | undefined;
 
-  if (isSupabaseConfigured()) {
-    usuario = demoUsuarios.find((u) => u.id === id) ?? demoUsuarios[0];
+  if (supabaseAtivo) {
+    const { data } = await buscarUsuarioAction(id);
+    if (data) {
+      usuario = {
+        id: String(data.id),
+        nome: data.nome ?? "",
+        email: data.email ?? "",
+        telefone: data.telefone ?? null,
+        role: data.role ?? "atendente",
+        status: data.status ?? "ativo",
+        createdAt: data.created_at ?? null,
+        ultimoAcesso: data.ultimo_acesso ?? null,
+      };
+    }
   } else {
-    usuario = demoUsuarios.find((u) => u.id === id) ?? demoUsuarios[0];
+    const demo = demoUsuarios.find((u) => u.id === id) ?? demoUsuarios[0];
+    if (demo) {
+      usuario = {
+        id: demo.id,
+        nome: demo.nome,
+        email: demo.email,
+        telefone: (demo as { telefone?: string }).telefone ?? null,
+        role: demo.role,
+        status: demo.status,
+        createdAt: demo.createdAt ?? null,
+        ultimoAcesso: demo.ultimoAcesso ?? null,
+      };
+    }
   }
 
   if (!usuario) notFound();
 
   const roleCfg = roleConfig[usuario.role];
-  const isAtivo = (usuario as any).ativo ?? (usuario as any).status === "ativo";
+  const isAtivo = usuario.status === "ativo";
 
-  // OS atribuídas ao técnico
-  const osDoTecnico = demoOS.filter((o) => o.tecnicoNome === usuario.nome).slice(0, 5);
+  // OS atribuídas (apenas dados demo por enquanto)
+  const osDoTecnico = supabaseAtivo
+    ? []
+    : demoOS.filter((o) => o.tecnicoNome === usuario!.nome).slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -86,7 +126,7 @@ export default async function UsuarioDetalhePage({ params }: Props) {
                 { icon: Mail, label: "E-mail", value: usuario.email },
                 { icon: Phone, label: "Telefone", value: usuario.telefone ?? "—" },
                 { icon: Shield, label: "Perfil", value: roleCfg?.label ?? usuario.role },
-                { icon: Calendar, label: "Desde", value: formatDate(usuario.createdAt) },
+                { icon: Calendar, label: "Desde", value: usuario.createdAt ? formatDate(usuario.createdAt) : "—" },
                 { icon: Calendar, label: "Último acesso", value: usuario.ultimoAcesso ? formatDate(usuario.ultimoAcesso) : "—" },
               ].map((item) => (
                 <div key={item.label} className="flex items-start gap-3">
@@ -192,19 +232,7 @@ export default async function UsuarioDetalhePage({ params }: Props) {
           </div>
 
           {/* Ações */}
-          <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-sm space-y-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)] mb-3">Ações</h3>
-            <Button variant="outline" size="sm" className="w-full justify-start">
-              Reenviar convite por e-mail
-            </Button>
-            <Button variant="outline" size="sm" className="w-full justify-start">
-              Redefinir senha
-            </Button>
-            <Button variant="outline" size="sm"
-              className="w-full justify-start text-[var(--color-danger)] hover:border-[var(--color-danger)]">
-              {isAtivo ? "Desativar usuário" : "Reativar usuário"}
-            </Button>
-          </div>
+          <UsuarioAcoes id={usuario.id} isAtivo={isAtivo} supabaseAtivo={supabaseAtivo} />
         </div>
       </div>
     </div>

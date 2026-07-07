@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServerClientInstance } from "@/lib/supabase";
+import { createAdminClient } from "@/lib/supabase-admin";
 import { isSupabaseConfigured } from "@/lib/auth";
 import { loginSchema, registroSchema } from "@/lib/validations";
 
@@ -64,7 +65,10 @@ export async function registroAction(formData: FormData) {
     };
   }
 
-  // 2. Cria a empresa (em produção, idealmente via trigger no banco)
+  // 2. Cria empresa e perfil com o client admin (service role) — o usuário
+  // recém-criado ainda não tem empresa, então as policies de RLS bloqueariam.
+  const admin = createAdminClient();
+
   const slug = empresaNome
     .toLowerCase()
     .normalize("NFD")
@@ -72,7 +76,7 @@ export async function registroAction(formData: FormData) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-  const { data: empresa, error: empresaError } = await supabase
+  const { data: empresa, error: empresaError } = await admin
     .from("empresas")
     .insert({
       nome: empresaNome,
@@ -84,11 +88,15 @@ export async function registroAction(formData: FormData) {
     .single();
 
   if (empresaError || !empresa) {
-    return { error: "Erro ao criar empresa. Tente novamente." };
+    // rollback: remove o usuário criado no Auth
+    await admin.auth.admin.deleteUser(authData.user.id);
+    return {
+      error: `Erro ao criar a empresa: ${empresaError?.message ?? "tente novamente."}`,
+    };
   }
 
   // 3. Cria o perfil do usuário vinculado à empresa
-  const { error: perfilError } = await supabase.from("usuarios").insert({
+  const { error: perfilError } = await admin.from("usuarios").insert({
     auth_user_id: authData.user.id,
     empresa_id: empresa.id,
     nome,
@@ -98,7 +106,12 @@ export async function registroAction(formData: FormData) {
   });
 
   if (perfilError) {
-    return { error: "Erro ao criar perfil de usuário." };
+    // rollback: remove empresa e usuário do Auth
+    await admin.from("empresas").delete().eq("id", empresa.id);
+    await admin.auth.admin.deleteUser(authData.user.id);
+    return {
+      error: `Erro ao criar o perfil de usuário: ${perfilError.message}`,
+    };
   }
 
   revalidatePath("/dashboard");

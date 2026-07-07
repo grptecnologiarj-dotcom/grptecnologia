@@ -114,6 +114,71 @@ export async function criarOSAction(formData: FormData) {
   redirect(`/os/${os.id}`)
 }
 
+const atualizarOSSchema = z.object({
+  problema: z.string().min(5, 'Descreva o problema com pelo menos 5 caracteres'),
+  diagnostico: z.string().optional(),
+  solucao: z.string().optional(),
+  observacoes: z.string().optional(),
+  obs_internas: z.string().optional(),
+  prioridade: z.enum(['baixa', 'media', 'alta', 'urgente']).default('media'),
+  tipo_atendimento: z.enum(['presencial', 'coleta_entrega', 'visita_tecnica', 'suporte_remoto', 'contrato_manutencao']).optional(),
+  tecnico_id: z.string().uuid().optional().or(z.literal('')),
+  data_previsao: z.string().optional(),
+  valor_mao_obra: z.string().optional(),
+  garantia_dias: z.string().optional(),
+  status: z.string().min(1),
+})
+
+export async function atualizarOSAction(osId: string, formData: FormData) {
+  const user = await getCurrentUser()
+  const supabase = await createServerClientInstance()
+
+  const raw: Record<string, string | undefined> = {}
+  for (const k of ['problema', 'diagnostico', 'solucao', 'observacoes', 'obs_internas',
+    'prioridade', 'tipo_atendimento', 'tecnico_id', 'data_previsao',
+    'valor_mao_obra', 'garantia_dias', 'status']) {
+    const v = formData.get(k)
+    if (v !== null) raw[k] = v as string
+  }
+
+  const parsed = atualizarOSSchema.safeParse(raw)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Dados inválidos.' }
+  }
+  const data = parsed.data
+
+  const update: Record<string, unknown> = {
+    problema: data.problema,
+    diagnostico: data.diagnostico || null,
+    solucao: data.solucao || null,
+    observacoes: data.observacoes || null,
+    obs_internas: data.obs_internas || null,
+    prioridade: data.prioridade,
+    tecnico_id: data.tecnico_id || null,
+    data_previsao: data.data_previsao || null,
+    status: data.status,
+  }
+  if (data.tipo_atendimento) update.tipo_atendimento = data.tipo_atendimento
+  if (data.valor_mao_obra !== undefined && data.valor_mao_obra !== '') {
+    update.valor_mao_obra = parseFloat(data.valor_mao_obra) || 0
+  }
+  if (data.garantia_dias !== undefined && data.garantia_dias !== '') {
+    update.garantia_dias = parseInt(data.garantia_dias, 10) || 0
+  }
+
+  const { error } = await supabase
+    .from('ordens_servico')
+    .update(update)
+    .eq('id', osId)
+    .eq('empresa_id', user.empresaId)
+
+  if (error) return { error: 'Erro ao atualizar OS.' }
+
+  revalidatePath('/os')
+  revalidatePath(`/os/${osId}`)
+  return { success: true }
+}
+
 export async function atualizarStatusOSAction(osId: string, novoStatus: string) {
   const user = await getCurrentUser()
   const supabase = await createServerClientInstance()

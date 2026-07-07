@@ -1,13 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, Trash2, X, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormField } from "@/components/ui/form-field";
-import { demoClientes, demoProdutos } from "@/lib/demo-data";
+import { useToast } from "@/components/ui/toast";
+import { demoProdutos } from "@/lib/demo-data";
+import { criarOrcamentoAction } from "@/lib/actions/orcamentos";
 import { formatCurrency } from "@/lib/utils";
+
+interface ClienteOption {
+  id: string;
+  nome: string;
+  email?: string;
+  telefone?: string;
+}
 
 type ItemLinha = {
   id: string;
@@ -19,9 +28,10 @@ type ItemLinha = {
 
 let _itemCounter = 1;
 
-export function OrcamentoForm() {
+export function OrcamentoForm({ clientes, isSupabase }: { clientes: ClienteOption[]; isSupabase: boolean }) {
   const router = useRouter();
-  const [saving, setSaving] = useState(false);
+  const [saving, startTransition] = useTransition();
+  const { success, error: toastError } = useToast();
 
   // Cliente
   const [buscaCliente, setBuscaCliente] = useState("");
@@ -38,7 +48,7 @@ export function OrcamentoForm() {
   const [buscaProdutoQuery, setBuscaProdutoQuery] = useState("");
 
   const sugestoesCliente = buscaCliente.trim() && !clienteSelecionado
-    ? demoClientes.filter((c) => c.nome.toLowerCase().includes(buscaCliente.toLowerCase())).slice(0, 5)
+    ? clientes.filter((c) => c.nome.toLowerCase().includes(buscaCliente.toLowerCase())).slice(0, 5)
     : [];
 
   const sugestoesProduto = buscaProdutoQuery.trim()
@@ -75,14 +85,49 @@ export function OrcamentoForm() {
     setBuscaProdutoQuery("");
   }
 
-  async function handleSave() {
-    setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    router.push("/orcamentos");
+  function handleSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!isSupabase) {
+      success("Orçamento criado! (demo)", "Em produção os dados serão persistidos no banco.");
+      router.push("/orcamentos");
+      return;
+    }
+    if (!clienteSelecionado) {
+      toastError("Cliente obrigatório", "Selecione um cliente para o orçamento.");
+      return;
+    }
+    const form = new FormData(e.currentTarget);
+    const titulo = (form.get("titulo") as string) ?? "";
+    const validadeDias = parseInt((form.get("validade") as string) || "15", 10);
+    const validadeData = new Date();
+    validadeData.setDate(validadeData.getDate() + (isNaN(validadeDias) ? 15 : validadeDias));
+
+    const linhasItens = itens
+      .filter((i) => i.descricao.trim())
+      .map((i) => `- ${i.descricao} (${i.tipo === "peca" ? "Peça" : "Serviço"}) x${i.quantidade} — ${formatCurrency(i.valorUnitario)}`)
+      .join("\n");
+    const descricao = linhasItens ? `${titulo}\n\nItens:\n${linhasItens}` : titulo;
+
+    const fd = new FormData();
+    fd.set("cliente_id", clienteSelecionado.id);
+    fd.set("equipamento_id", "");
+    fd.set("os_id", "");
+    fd.set("descricao", descricao);
+    fd.set("valor_total", String(total));
+    fd.set("validade", validadeData.toISOString().split("T")[0]);
+    startTransition(async () => {
+      const result = await criarOrcamentoAction(fd);
+      if (result?.error) {
+        toastError("Erro ao criar orçamento", result.error);
+      } else {
+        success("Orçamento criado!", "O orçamento foi cadastrado.");
+        router.push("/orcamentos");
+      }
+    });
   }
 
   return (
-    <div className="space-y-6">
+    <form onSubmit={handleSave} className="space-y-6">
       {/* Cliente */}
       <div className="rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
         <h2 className="font-semibold mb-4">Cliente</h2>
@@ -293,10 +338,10 @@ export function OrcamentoForm() {
           <FileText className="size-4" />
           Salvar como rascunho
         </Button>
-        <Button type="button" loading={saving} onClick={handleSave}>
+        <Button type="submit" loading={saving}>
           Criar orçamento
         </Button>
       </div>
-    </div>
+    </form>
   );
 }

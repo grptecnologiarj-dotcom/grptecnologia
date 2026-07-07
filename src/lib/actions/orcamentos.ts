@@ -90,3 +90,67 @@ export async function atualizarStatusOrcamentoAction(id: string, status: string)
   revalidatePath(`/orcamentos/${id}`)
   return { success: true }
 }
+
+// ============================================================
+// Ações públicas por token (portal /aprovar/[token]) — sem login
+// ============================================================
+
+export async function aprovarOrcamentoPorTokenAction(token: string) {
+  if (!token || token === 'demo-token') return { success: true }
+
+  const { createAdminClient } = await import('@/lib/supabase-admin')
+  const supabase = createAdminClient()
+
+  const { data: orc, error: findError } = await supabase
+    .from('orcamentos')
+    .select('id, status')
+    .eq('token_aprovacao', token)
+    .single()
+
+  if (findError || !orc) return { error: 'Orçamento não encontrado.' }
+  if (!['enviado', 'rascunho'].includes(orc.status)) {
+    return { error: 'Este orçamento já foi respondido.' }
+  }
+
+  const { error } = await supabase
+    .from('orcamentos')
+    .update({ status: 'aprovado', aprovado_em: new Date().toISOString() })
+    .eq('id', orc.id)
+
+  if (error) return { error: 'Erro ao aprovar orçamento. Tente novamente.' }
+  revalidatePath('/orcamentos')
+  revalidatePath(`/orcamentos/${orc.id}`)
+  return { success: true }
+}
+
+export async function recusarOrcamentoPorTokenAction(token: string, motivo?: string) {
+  if (!token || token === 'demo-token') return { success: true }
+
+  const { createAdminClient } = await import('@/lib/supabase-admin')
+  const supabase = createAdminClient()
+
+  const { data: orc, error: findError } = await supabase
+    .from('orcamentos')
+    .select('id, status, observacoes')
+    .eq('token_aprovacao', token)
+    .single()
+
+  if (findError || !orc) return { error: 'Orçamento não encontrado.' }
+  if (!['enviado', 'rascunho'].includes(orc.status)) {
+    return { error: 'Este orçamento já foi respondido.' }
+  }
+
+  const observacoes = motivo?.trim()
+    ? `${orc.observacoes ? `${orc.observacoes}\n` : ''}[Recusa do cliente] ${motivo.trim()}`
+    : orc.observacoes
+
+  const { error } = await supabase
+    .from('orcamentos')
+    .update({ status: 'recusado', recusado_em: new Date().toISOString(), observacoes })
+    .eq('id', orc.id)
+
+  if (error) return { error: 'Erro ao recusar orçamento. Tente novamente.' }
+  revalidatePath('/orcamentos')
+  revalidatePath(`/orcamentos/${orc.id}`)
+  return { success: true }
+}
